@@ -1,6 +1,6 @@
 class RedmineDestinationBbsController < ApplicationController
   unloadable
-  accept_api_auth :index
+  accept_api_auth :index, :update
 
   def index
 
@@ -178,53 +178,70 @@ class RedmineDestinationBbsController < ApplicationController
   end
 
   def update
-    # コメント確認
-    if params[:comment].present?
-      @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date])
-      # コメント更新時はコメントのみ更新
-      if @destination_bbs.update(comment: params[:comment])
-        flash[:notice] = l(:notice_successful_update)
-        move_to_index
-      end
-    elsif params[:attendance_location].present?
-      @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date])
-      # 出社場所更新時は出社場所のみ更新
-      if @destination_bbs.update(attendance_location: params[:attendance_location])
-        flash[:notice] = l(:notice_successful_update)
-        move_to_index
-      end
-    else
-      # 行先確認(年休の場合当日以外も登録可)
-      if params[:destination] == l(:button_holiday) || params[:destination] == l(:button_planned_paid_holiday) || params[:destination] == l(:button_refresh_leave)
-        @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date])
-        destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date]).first
-      else
-        # 年休以外の場合は当日のレコードのみ更新可
-        @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: Date.today)
-        destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: Date.today).first
-      end
+    @destination_bbs_record = RedmineDestinationBbsModel.find_by_id(params[:id])
+
+    respond_to do |format|
+      format.html do
+        # コメント確認
+        if params[:comment].present?
+          @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date])
+          # コメント更新時はコメントのみ更新
+          if @destination_bbs.update(comment: params[:comment])
+            flash[:notice] = l(:notice_successful_update)
+            move_to_index
+          end
+        elsif params[:attendance_location].present?
+          @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date])
+          # 出社場所更新時は出社場所のみ更新
+          if @destination_bbs.update(attendance_location: params[:attendance_location])
+            flash[:notice] = l(:notice_successful_update)
+            move_to_index
+          end
+        else
+          # 行先確認(年休の場合当日以外も登録可)
+          if params[:destination] == l(:button_holiday) || params[:destination] == l(:button_planned_paid_holiday) || params[:destination] == l(:button_refresh_leave)
+            @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date])
+            destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date]).first
+          else
+            # 年休以外の場合は当日のレコードのみ更新可
+            @destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: Date.today)
+            destination_bbs = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: Date.today).first
+          end
 
 
-      # 退勤ボタンを押した時のみ終了時刻を更新
-      if params[:end_time].present?
-        if @destination_bbs.update(end_time: Time.zone.now)
-          flash[:notice] = l(:notice_successful_update)
-          move_to_index
+          # 退勤ボタンを押した時のみ終了時刻を更新
+          if params[:end_time].present?
+            if @destination_bbs.update(end_time: Time.zone.now)
+              flash[:notice] = l(:notice_successful_update)
+              move_to_index
+            end
+          elsif destination_bbs.start_time.blank? && (params[:destination] != l(:button_holiday) || params[:destination] != l(:button_planned_paid_holiday) || params[:destination] != l(:button_refresh_leave))
+            # 年休・計年・リフ休でない行先を登録した場合は開始時刻も更新
+            if @destination_bbs.update(destination: params[:destination], start_time: Time.zone.now)
+              flash[:notice] = l(:notice_successful_update)
+              move_to_index
+            end
+          elsif params[:destination].blank?
+            # コメント空欄時に更新ボタンを押した場合は何も更新しない
+            move_to_index
+          else
+            # 上記以外は行先のみ更新
+            if @destination_bbs.update(destination: params[:destination])
+              flash[:notice] = l(:notice_successful_update)
+              move_to_index
+            end
+          end
         end
-      elsif destination_bbs.start_time.blank? && (params[:destination] != l(:button_holiday) || params[:destination] != l(:button_planned_paid_holiday) || params[:destination] != l(:button_refresh_leave))
-        # 年休・計年・リフ休でない行先を登録した場合は開始時刻も更新
-        if @destination_bbs.update(destination: params[:destination], start_time: Time.zone.now)
-          flash[:notice] = l(:notice_successful_update)
-          move_to_index
-        end
-      elsif params[:destination].blank?
-        # コメント空欄時に更新ボタンを押した場合は何も更新しない
-        move_to_index
-      else
-        # 上記以外は行先のみ更新
-        if @destination_bbs.update(destination: params[:destination])
-          flash[:notice] = l(:notice_successful_update)
-          move_to_index
+      end
+      format.api do
+        if @destination_bbs_record.nil?
+          render_404
+        else
+          if @destination_bbs_record.update(update_params)
+            render plain: 'Success', status: :ok
+          else
+            render plain: 'Failed', status: :unprocessable_entity
+          end
         end
       end
     end
@@ -361,6 +378,10 @@ class RedmineDestinationBbsController < ApplicationController
   # 日付指定時の検索用関数
   def destination_bbs_search_params
     params.fetch(:search, {}).permit(:registration_date, :group_id)
+  end
+
+  def update_params
+    params.require(:redmine_destination_bbs_model).permit(:destination, :start_time, :end_time, :comment, :attendance_location)
   end
 
 end
