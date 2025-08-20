@@ -169,6 +169,17 @@ class RedmineDestinationBbsController < ApplicationController
     else
       @destination_bbs.registration_date = Date.today
       @destination_bbs.start_time = Time.zone.now
+      # 体調と体温はデフォルト値を良好/平熱とする
+      @destination_bbs.condition = "良好"
+      @destination_bbs.body_temperature = "平熱"
+      # 行先が出社の場合デフォルトの出社先を在勤地と同値とする
+      if params[:destination] == l(:button_attendance)
+        # 登録用ユーザの在勤地取得
+        custom_values = get_working_in_place
+        working_in_place = custom_values.where(customized_id: params[:user_id]).select('value').first
+        @destination_bbs.attendance_location = working_in_place
+      end
+
     end
 
     if @destination_bbs.save
@@ -178,6 +189,7 @@ class RedmineDestinationBbsController < ApplicationController
   end
 
   def update
+
     @destination_bbs_record = RedmineDestinationBbsModel.find_by_id(params[:id])
 
     respond_to do |format|
@@ -241,8 +253,19 @@ class RedmineDestinationBbsController < ApplicationController
             render plain: 'Success', status: :ok
           else
             render plain: 'Failed', status: :unprocessable_entity
+
           end
         end
+      end
+    end
+  end
+
+  def destroy
+    destination_bbs_id = RedmineDestinationBbsModel.where(user_id: params[:user_id], registration_date: params[:registration_date]).first.id
+    if destination_bbs_id.present?
+      if RedmineDestinationBbsModel.destroy(destination_bbs_id)
+        flash[:notice] = l(:notice_successful_delete)
+        move_to_index
       end
     end
   end
