@@ -252,7 +252,7 @@ class RedmineDestinationBbsController < ApplicationController
           if @destination_bbs_record.update(update_params)
             render plain: 'Success', status: :ok
           else
-            render plain: 'Failed', status: :unprocessable_entity
+            render json: { errors: @destination_bbs_record.errors }, status: :unprocessable_entity
 
           end
         end
